@@ -19,7 +19,11 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@zenfs/core": ["./node_modules/@zenfs/core/dist/index.js"],
+      "@zenfs/dom": ["./node_modules/@zenfs/dom/dist/index.js"],
+      "kerium": ["./node_modules/kerium/dist/index.js"],
+      "utilium": ["./node_modules/utilium/dist/index.js"]
     }
   },
   "include": [
