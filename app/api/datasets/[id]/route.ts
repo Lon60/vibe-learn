@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { ObjectId } from "mongodb"
 
 import { DatasetDoc, getDatasetsCollection } from "@/lib/mongodb"
@@ -14,11 +14,11 @@ const serializeDataset = (dataset: DatasetDoc & { _id: ObjectId }) => ({
 })
 
 export async function GET(
-  _request: Request,
-  { params }: { params: { id: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const datasetId = params.id
+    const { id: datasetId } = await params
     if (!datasetId) {
       return NextResponse.json({ error: "Missing dataset id." }, { status: 400 })
     }
