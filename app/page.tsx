@@ -22,6 +22,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  MAX_DATASET_WORDS,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_NAME_LENGTH,
+  MAX_USERNAME_LENGTH,
+  MAX_WORD_LENGTH,
+} from "@/lib/dataset-constraints"
 
 const parseWords = (text: string) =>
   text
@@ -31,8 +38,8 @@ const parseWords = (text: string) =>
     .filter(Boolean)
 
 const normalize = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase()
-
-const MAX_DATASET_WORDS = 1000
+const shortenWord = (value: string, limit = 32) =>
+  value.length > limit ? `${value.slice(0, limit)}...` : value
 
 type FeedbackState = "correct" | "advance" | "incorrect" | "complete" | null
 
@@ -51,6 +58,12 @@ type CreateFormState = {
   username: string
   description: string
   wordsText: string
+}
+type ToastTone = "success" | "error" | "info"
+type ToastState = {
+  id: number
+  tone: ToastTone
+  message: string
 }
 
 export default function Home() {
@@ -85,25 +98,48 @@ export default function Home() {
     tone: "success" | "error"
     message: string
   } | null>(null)
+  const [toast, setToast] = useState<ToastState | null>(null)
 
   const masteredWords = useMemo(
     () => words.slice(0, revealedCount),
     [words, revealedCount]
   )
 
-  const createWordCount = useMemo(
-    () => parseWords(createForm.wordsText).length,
+  const parsedCreateWords = useMemo(
+    () => parseWords(createForm.wordsText),
     [createForm.wordsText]
+  )
+  const createWordCount = parsedCreateWords.length
+  const invalidWord = useMemo(
+    () => parsedCreateWords.find((word) => word.length > MAX_WORD_LENGTH) ?? null,
+    [parsedCreateWords]
   )
 
   const canSubmitList = useMemo(
-    () =>
-      createForm.name.trim().length > 0 &&
-      createForm.username.trim().length > 0 &&
-      createWordCount > 0 &&
-      createWordCount <= MAX_DATASET_WORDS,
-    [createForm.name, createForm.username, createWordCount]
+    () => {
+      const name = createForm.name.trim()
+      const username = createForm.username.trim()
+      const descriptionLength = createForm.description.trim().length
+
+      if (!name || !username) return false
+      if (name.length > MAX_NAME_LENGTH || username.length > MAX_USERNAME_LENGTH) return false
+      if (descriptionLength > MAX_DESCRIPTION_LENGTH) return false
+      if (invalidWord) return false
+
+      return createWordCount > 0 && createWordCount <= MAX_DATASET_WORDS
+    },
+    [
+      createForm.name,
+      createForm.username,
+      createForm.description,
+      createWordCount,
+      invalidWord,
+    ]
   )
+
+  const showToast = useCallback((tone: ToastTone, message: string) => {
+    setToast({ id: Date.now(), tone, message })
+  }, [])
 
   const fetchDatasets = useCallback(
     async (query = "") => {
@@ -154,6 +190,12 @@ export default function Home() {
   useEffect(() => {
     fetchDatasets()
   }, [fetchDatasets])
+
+  useEffect(() => {
+    if (!toast) return
+    const timeout = window.setTimeout(() => setToast(null), 4200)
+    return () => window.clearTimeout(timeout)
+  }, [toast])
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -287,23 +329,34 @@ export default function Home() {
         throw new Error("That file looks empty. Add some words and try again.")
       }
 
+      const oversizedWord = parsed.find((word) => word.length > MAX_WORD_LENGTH)
+      if (oversizedWord) {
+        throw new Error(
+          `Words are limited to ${MAX_WORD_LENGTH} characters. Shorten "${shortenWord(oversizedWord)}".`
+        )
+      }
+
       setCreateForm((previous) => ({
         ...previous,
         wordsText: parsed.join("\n"),
       }))
       setCreateFileName(file.name)
+      const successMessage = `Imported ${parsed.length} words from ${file.name}.`
       setCreateStatus({
         tone: "success",
-        message: `Imported ${parsed.length} words from ${file.name}.`,
+        message: successMessage,
       })
+      showToast("success", successMessage)
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to read that file. Please upload a plain .txt file."
       setCreateStatus({
         tone: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unable to read that file. Please upload a plain .txt file.",
+        message,
       })
+      showToast("error", message)
     } finally {
       event.target.value = ""
     }
@@ -315,15 +368,30 @@ export default function Home() {
 
     const words = parseWords(createForm.wordsText)
     if (words.length === 0) {
-      setCreateStatus({ tone: "error", message: "Add at least one word to save." })
+      const message = "Add at least one word to save."
+      setCreateStatus({ tone: "error", message })
+      showToast("error", message)
       return
     }
 
     if (words.length > MAX_DATASET_WORDS) {
+      const message = `Lists are limited to ${MAX_DATASET_WORDS} words for now.`
       setCreateStatus({
         tone: "error",
-        message: `Lists are limited to ${MAX_DATASET_WORDS} words for now.`,
+        message,
       })
+      showToast("error", message)
+      return
+    }
+
+    const oversizedWord = words.find((word) => word.length > MAX_WORD_LENGTH)
+    if (oversizedWord) {
+      const message = `Shorten "${shortenWord(oversizedWord)}" — words are limited to ${MAX_WORD_LENGTH} characters.`
+      setCreateStatus({
+        tone: "error",
+        message,
+      })
+      showToast("error", message)
       return
     }
 
@@ -352,10 +420,12 @@ export default function Home() {
         )
       }
 
+      const successMessage = "Word list saved. Load it from the list below."
       setCreateStatus({
         tone: "success",
-        message: "Word list saved. Load it from the list below.",
+        message: successMessage,
       })
+      showToast("success", successMessage)
 
       setCreateForm((previous) => ({
         ...previous,
@@ -367,13 +437,15 @@ export default function Home() {
 
       await fetchDatasets(datasetSearch)
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to save that word list just yet."
       setCreateStatus({
         tone: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unable to save that word list just yet.",
+        message,
       })
+      showToast("error", message)
     } finally {
       setCreateSubmitting(false)
     }
@@ -500,7 +572,35 @@ export default function Home() {
   }, [roundLength, recallIndex])
 
   return (
-    <main className="min-h-screen bg-background px-4 py-10 text-foreground">
+    <>
+      {toast && (
+        <div className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+          <div
+            className={`pointer-events-auto rounded-xl border bg-zinc-950/90 px-4 py-3 text-sm shadow-2xl ${
+              toast.tone === "error"
+                ? "border-rose-500/60 text-rose-100"
+                : toast.tone === "success"
+                  ? "border-emerald-500/60 text-emerald-100"
+                  : "border-sky-500/60 text-sky-100"
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-start gap-4">
+              <span className="flex-1">{toast.message}</span>
+              <button
+                type="button"
+                aria-label="Dismiss notification"
+                onClick={() => setToast(null)}
+                className="text-xs uppercase tracking-[0.2em] opacity-80 transition hover:opacity-100"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <main className="min-h-screen bg-background px-4 py-10 text-foreground">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <Card className="border-zinc-800 bg-zinc-950/90 backdrop-blur">
@@ -702,14 +802,6 @@ export default function Home() {
                   >
                     Restart session
                   </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="h-10 text-sm text-zinc-400 hover:text-zinc-100"
-                  >
-                    Load another file
-                  </Button>
                 </div>
               </div>
             </CardFooter>
@@ -738,7 +830,7 @@ export default function Home() {
                         value={createForm.name}
                         onChange={(event) => updateCreateForm("name", event.target.value)}
                         placeholder="Evening mantra"
-                        maxLength={80}
+                        maxLength={MAX_NAME_LENGTH}
                       />
                     </div>
                     <div className="space-y-2">
@@ -750,7 +842,7 @@ export default function Home() {
                         value={createForm.username}
                         onChange={(event) => updateCreateForm("username", event.target.value)}
                         placeholder="@you"
-                        maxLength={40}
+                        maxLength={MAX_USERNAME_LENGTH}
                       />
                     </div>
                   </div>
@@ -766,7 +858,7 @@ export default function Home() {
                       }
                       placeholder="Tell the vibe in a sentence."
                       className="min-h-[80px]"
-                      maxLength={240}
+                        maxLength={MAX_DESCRIPTION_LENGTH}
                     />
                   </div>
                   <div className="space-y-2">
@@ -808,6 +900,12 @@ export default function Home() {
                       Import .txt
                     </Button>
                   </div>
+                  {invalidWord && (
+                    <p className="text-xs text-rose-400">
+                      Shorten &quot;{shortenWord(invalidWord)}&quot; — words are limited to{" "}
+                      {MAX_WORD_LENGTH} characters each.
+                    </p>
+                  )}
                   {createStatus && (
                     <p
                       className={`text-xs ${
@@ -911,6 +1009,7 @@ export default function Home() {
           </div>
         </div>
       </div>
-    </main>
+      </main>
+    </>
   )
 }
