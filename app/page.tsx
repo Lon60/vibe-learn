@@ -29,6 +29,7 @@ import {
   MAX_USERNAME_LENGTH,
   MAX_WORD_LENGTH,
 } from "@/lib/dataset-constraints"
+import { cn } from "@/lib/utils"
 
 const parseWords = (text: string) =>
   text
@@ -40,6 +41,15 @@ const parseWords = (text: string) =>
 const normalize = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase()
 const shortenWord = (value: string, limit = 32) =>
   value.length > limit ? `${value.slice(0, limit)}...` : value
+const reorderWords = (list: string[], shouldShuffle: boolean) => {
+  if (!shouldShuffle) return [...list]
+  const shuffled = [...list]
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    ;[shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]]
+  }
+  return shuffled
+}
 
 type FeedbackState = "correct" | "advance" | "incorrect" | "complete" | null
 
@@ -72,6 +82,7 @@ export default function Home() {
   const datasetFileInputRef = useRef<HTMLInputElement>(null)
 
   const [words, setWords] = useState<string[]>([])
+  const [sourceWords, setSourceWords] = useState<string[]>([])
   const [fileName, setFileName] = useState("")
   const [activeDataset, setActiveDataset] = useState<DatasetSummary | null>(null)
   const [inputValue, setInputValue] = useState("")
@@ -81,6 +92,7 @@ export default function Home() {
   const [revealedCount, setRevealedCount] = useState(0)
   const [recallIndex, setRecallIndex] = useState(0)
   const [sessionComplete, setSessionComplete] = useState(false)
+  const [shuffleEnabled, setShuffleEnabled] = useState(true)
   const [datasets, setDatasets] = useState<DatasetSummary[]>([])
   const [datasetsLoading, setDatasetsLoading] = useState(true)
   const [datasetsError, setDatasetsError] = useState<string | null>(null)
@@ -205,19 +217,31 @@ export default function Home() {
     return () => clearTimeout(handle)
   }, [datasetSearch, fetchDatasets])
 
-  const hydrateSession = useCallback((list: string[]) => {
-    setWords(list)
-    setRevealedCount(0)
-    setRecallIndex(0)
-    setInputValue("")
-    setFeedback(null)
-    setFeedbackDetail("")
-    setSessionComplete(false)
-    setErrorNotice(null)
-    requestAnimationFrame(() => {
-      inputRef.current?.focus()
-    })
-  }, [])
+  const startSession = useCallback(
+    (list: string[], shuffleOverride?: boolean) => {
+      const prepared = reorderWords(list, shuffleOverride ?? shuffleEnabled)
+      setWords(prepared)
+      setRevealedCount(0)
+      setRecallIndex(0)
+      setInputValue("")
+      setFeedback(null)
+      setFeedbackDetail("")
+      setSessionComplete(false)
+      requestAnimationFrame(() => {
+        inputRef.current?.focus()
+      })
+    },
+    [shuffleEnabled]
+  )
+
+  const hydrateSession = useCallback(
+    (list: string[]) => {
+      setSourceWords([...list])
+      setErrorNotice(null)
+      startSession(list)
+    },
+    [startSession]
+  )
 
   const updateCreateForm = (field: keyof CreateFormState, value: string) => {
     setCreateForm((previous) => ({
@@ -297,6 +321,7 @@ export default function Home() {
       setActiveDataset(null)
     } catch (error) {
       setWords([])
+      setSourceWords([])
       setFileName("")
       setRevealedCount(0)
       setRecallIndex(0)
@@ -539,19 +564,20 @@ export default function Home() {
 
   const handleReset = () => {
     if (words.length === 0) return
-    setRevealedCount(0)
-    setRecallIndex(0)
-    setInputValue("")
-    setFeedback(null)
-    setFeedbackDetail("")
-    setSessionComplete(false)
-    requestAnimationFrame(() => {
-      inputRef.current?.focus()
-    })
+    const baseWords = sourceWords.length > 0 ? sourceWords : words
+    startSession(baseWords)
+  }
+
+  const handleShuffleToggle = () => {
+    const nextValue = !shuffleEnabled
+    setShuffleEnabled(nextValue)
+    if (sourceWords.length === 0) return
+    startSession(sourceWords, nextValue)
   }
 
   const clearLoadedList = () => {
     setWords([])
+    setSourceWords([])
     setFileName("")
     setActiveDataset(null)
     setRevealedCount(0)
@@ -659,6 +685,47 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1 text-center sm:text-left">
+                  <p className="text-sm font-semibold text-zinc-100">Shuffle words</p>
+                  <p className="text-xs text-zinc-500">
+                    Keep the sequence fresh every new try with a randomized order.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={shuffleEnabled}
+                  aria-label="Toggle shuffled word order"
+                  onClick={handleShuffleToggle}
+                  className={cn(
+                    "flex items-center gap-3 rounded-full border px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    shuffleEnabled
+                      ? "border-emerald-500/70 bg-emerald-500/10 text-emerald-200"
+                      : "border-zinc-700 bg-zinc-900/60 text-zinc-400"
+                  )}
+                >
+                  <span className="text-sm tracking-wide">Shuffle</span>
+                  <span
+                    className={cn(
+                      "relative inline-flex h-6 w-11 items-center rounded-full border transition",
+                      shuffleEnabled
+                        ? "border-emerald-400 bg-emerald-500/40"
+                        : "border-zinc-600 bg-zinc-800"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-5 w-5 rounded-full bg-white shadow transition-transform",
+                        shuffleEnabled ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </span>
+                  <span className="text-xs uppercase tracking-[0.2em]">
+                    {shuffleEnabled ? "On" : "Off"}
+                  </span>
+                </button>
+              </div>
               <section className="space-y-3">
                 <h2 className="text-xs uppercase tracking-[0.3em] text-zinc-500">
                   Memorize this
