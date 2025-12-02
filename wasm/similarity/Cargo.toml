@@ -1,0 +1,16 @@
+[package]
+name = "similarity"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = { workspace = true }
+serde = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+wee_alloc = { workspace = true, optional = true }
+
+[features]
+default = ["wee_alloc"]

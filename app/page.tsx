@@ -111,6 +111,7 @@ export default function Home() {
     message: string
   } | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
+  const [rickRollActive, setRickRollActive] = useState(false)
 
   const masteredWords = useMemo(
     () => words.slice(0, revealedCount),
@@ -626,6 +627,33 @@ export default function Home() {
           </div>
         </div>
       )}
+      {rickRollActive && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm"
+          onClick={() => setRickRollActive(false)}
+        >
+          <div
+            className="relative w-full max-w-4xl aspect-video"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setRickRollActive(false)}
+              className="absolute -top-12 right-0 text-zinc-400 hover:text-zinc-100 transition text-sm uppercase tracking-widest"
+              aria-label="Close video"
+            >
+              Close [X]
+            </button>
+            <iframe
+              className="w-full h-full rounded-lg shadow-2xl"
+              src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"
+              title="Rick Astley - Never Gonna Give You Up"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      )}
       <main className="min-h-screen bg-background px-4 py-10 text-foreground">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -634,6 +662,13 @@ export default function Home() {
               <div className="space-y-3 text-center lg:text-left">
                 <CardTitle className="text-3xl font-semibold text-zinc-100">
                   Vibe Learn
+                  <span
+                    onClick={() => setRickRollActive(true)}
+                    className="ml-1 cursor-pointer text-zinc-800 hover:text-zinc-600 transition-colors select-none"
+                    title="?"
+                  >
+                    .
+                  </span>
                 </CardTitle>
                 <CardDescription className="text-base text-zinc-400">
                   Craft your own lists, search the community library, or upload a .txt anytime.

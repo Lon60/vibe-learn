@@ -1,0 +1,14 @@
+[workspace]
+members = [
+    "similarity",
+    "text-analysis",
+    "crypto",
+    "compression",
+]
+resolver = "2"
+
+[workspace.dependencies]
+wasm-bindgen = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+wee_alloc = "0.4"
